@@ -1,0 +1,22 @@
+{
+	"FileVersion" : 3,
+	
+	"FriendlyName" : "MIC Rep",
+	"Version" : 1,
+	"VersionName" : "1.0.0",
+	"CreatedBy" : "historia Inc.",
+	"CreatedByURL" : "http://historia.co.jp/",
+	"EngineVersion" : "4.11.2",
+	"Description" : "",
+	"Category" : "Editor",
+	
+	"Modules" :
+	[
+		{
+			"Name" : "MICRep",
+			"Type": "Editor"
+		}
+	],
+
+	"CanContainContent" : true
+}
