@@ -23,9 +23,11 @@ public class MICRep : ModuleRules
 				"LevelEditor",
 				"UnrealEd",
 				"AssetRegistry",
+				"SlateCore",
 				"Slate",
 				"ContentBrowser",
 				"AssetTools",
+				"EditorWidgets",
 			});
 	}
 }
