@@ -22,6 +22,9 @@ private:
 	static void CreateReparentSubMenu(FMenuBuilder& MenuBuilder, TArray<FAssetData> SelectedAssets);
 
 	static void ReplaceMaterials(TArray<FAssetData> SelectedAssets);
+	static UMaterialInterface* CreateMIC(UMaterialInterface* BaseMaterial, FString BaseMaterialSimpleName, UMaterialInterface* OldMaterial, FString TargetPathName);
+	static void ReplaceStaticMeshMaterial(FAssetData& Asset);
+	static void ReplaceSkeletalMeshMaterial(FAssetData& Asset);
 	static void ReparentMICs(const FAssetData& NewParentAssetData, TArray<FAssetData> SelectedAssets);
 };
 
@@ -75,6 +78,7 @@ TSharedRef<FExtender> FMICRepModule::OnExtendContentBrowserAssetSelectionMenu(co
 	for(auto ItAsset = SelectedAssets.CreateConstIterator(); ItAsset; ++ItAsset)
 	{
 		bAnyMeshes |= ((*ItAsset).AssetClass == UStaticMesh::StaticClass()->GetFName());
+		bAnyMeshes |= ((*ItAsset).AssetClass == USkeletalMesh::StaticClass()->GetFName());
 		bAnyMICs   |= ((*ItAsset).AssetClass == UMaterialInstanceConstant::StaticClass()->GetFName());
 	}
 
@@ -97,6 +101,7 @@ void FMICRepModule::CreateAssetMenu(FMenuBuilder& MenuBuilder, TArray<FAssetData
 	for(auto ItAsset = SelectedAssets.CreateConstIterator(); ItAsset; ++ItAsset)
 	{
 		bAnyMeshes |= ((*ItAsset).AssetClass == UStaticMesh::StaticClass()->GetFName());
+		bAnyMeshes |= ((*ItAsset).AssetClass == USkeletalMesh::StaticClass()->GetFName());
 		bAnyMICs   |= ((*ItAsset).AssetClass == UMaterialInstanceConstant::StaticClass()->GetFName());
 	}
 
@@ -137,7 +142,7 @@ void FMICRepModule::CreateReparentSubMenu(FMenuBuilder& MenuBuilder, TArray<FAss
 }
 
 //
-// StaticMeshマテリアルの一括置換 
+// StaticMesh/SkeletalMeshマテリアルの一括置換 
 //
 void FMICRepModule::ReplaceMaterials(TArray<FAssetData> SelectedAssets)
 {
@@ -158,139 +163,87 @@ void FMICRepModule::ReplaceMaterials(TArray<FAssetData> SelectedAssets)
 	{
 		// 編集対象メッシュを取得 
 		const FAssetData& MeshAssetData = (*ItAsset);
-		UStaticMesh* TargetMesh = Cast<UStaticMesh>(MeshAssetData.GetAsset());
-		if(nullptr == TargetMesh)
+		UObject* TargetAsset = MeshAssetData.GetAsset();
+		if(nullptr == TargetAsset)
 		{
 			continue;
 		}
-		FString TargetPathName = FPackageName::GetLongPackagePath(TargetMesh->GetPathName());
 
 		// ベースマテリアルを複製 
+		FString TargetPathName = FPackageName::GetLongPackagePath(TargetAsset->GetPathName());
 		UMaterial* BaseMat = nullptr;
 		FString BaseMatSimpleName;
 		{
-			BaseMatSimpleName = TargetMesh->GetName().Replace(TEXT("SM_"), TEXT(""), ESearchCase::CaseSensitive);
+			BaseMatSimpleName = TargetAsset->GetName().Replace(TEXT("SM_"), TEXT(""), ESearchCase::CaseSensitive);
 			FString BaseMatName = FString::Printf(TEXT("M_%s_Base"), *BaseMatSimpleName);
-			
+
 			UObject* DuplicatedObject = AssetToolsModule.Get().DuplicateAsset(
 				BaseMatName,
 				TargetPathName,
 				BaseMatOriginal
 				);
 			BaseMat = Cast<UMaterial>(DuplicatedObject);
-			if(nullptr == BaseMat)
+			if (nullptr == BaseMat)
 			{
 				continue;
 			}
 		}
 
-		// メッシュの各マテリアルについて 
-		int32 MatIdx = 0;
-		for(auto ItMat = TargetMesh->Materials.CreateConstIterator(); ItMat; ++ItMat, ++MatIdx)
+		// StaticMesh 
+		UStaticMesh* TargetStaticMesh = Cast<UStaticMesh>(MeshAssetData.GetAsset());
+		if(nullptr != TargetStaticMesh)
 		{
-			// 元マテリアル情報 
-			UMaterialInterface* Mat = TargetMesh->Materials[MatIdx];
-			if(nullptr == Mat)
+			// メッシュの各マテリアルについて 
+			int32 MatIdx = 0;
+			for(auto ItMat = TargetStaticMesh->Materials.CreateConstIterator(); ItMat; ++ItMat, ++MatIdx)
 			{
-				continue;
-			}
-			UTexture* BaseColorTex = nullptr;
-			{
-				TArray<UTexture*> Textures;
-				TArray<FName> TextureNames;
-				Mat->GetTexturesInPropertyChain(
-					EMaterialProperty::MP_BaseColor,
-					Textures,
-					&TextureNames,
-					nullptr
+				UMaterialInterface* NewMIC = CreateMIC(
+					BaseMat,
+					BaseMatSimpleName,
+					TargetStaticMesh->Materials[MatIdx],
+					TargetPathName
 					);
-				if(0 < Textures.Num())
+				if(nullptr == NewMIC)
 				{
-					BaseColorTex = Textures[0];
+					continue;
 				}
-			}
-			UTexture* NormalTex = nullptr;
-			{
-				TArray<UTexture*> Textures;
-				TArray<FName> TextureNames;
-				Mat->GetTexturesInPropertyChain(
-					EMaterialProperty::MP_Normal,
-					Textures,
-					&TextureNames,
-					nullptr
-					);
-				if(0 < Textures.Num())
-				{
-					NormalTex = Textures[0];
-				}
+				ObjectsToSync.Add(NewMIC);
+
+				// メッシュに新MICをセット 
+				TargetStaticMesh->Materials[MatIdx] = NewMIC;
 			}
 
-			// 新MIC名 
-			FString NewMICName = FString::Printf(
-				TEXT("MI_%s_%s"),
-				*BaseMatSimpleName,
-				*(Mat->GetName().Replace(TEXT("M_"), TEXT(""), ESearchCase::CaseSensitive))
-				);
-
-			// 新MIC作成 
-			UMaterialInstanceConstant* NewMIC = nullptr;
-			{
-				UMaterialInstanceConstantFactoryNew* Factory =
-					NewObject<UMaterialInstanceConstantFactoryNew>();
-				Factory->InitialParent = BaseMat;
-
-				UObject* NewAsset = AssetToolsModule.Get().CreateAsset(
-					NewMICName,
-					TargetPathName,
-					UMaterialInstanceConstant::StaticClass(),
-					Factory
-					);
-				ObjectsToSync.Add(NewAsset);
-
-				NewMIC = Cast<UMaterialInstanceConstant>(NewAsset);
-			}
-			if(nullptr == NewMIC)
-			{
-				continue;
-			}
-
-			// 新MICへテクスチャ設定 
-			FStaticParameterSet StaticParams;
-			if(nullptr != BaseColorTex)
-			{
-				NewMIC->SetTextureParameterValueEditorOnly(
-					FName(TEXT("BaseColor")),
-					BaseColorTex
-					);
-			}
-			if(nullptr != NormalTex)
-			{
-				NewMIC->SetTextureParameterValueEditorOnly(
-					FName(TEXT("Normal")),
-					NormalTex
-					);
-			}
-			else
-			{
-				// NoramlMap不要な場合はStaticSwitchでオフにする 
-				FStaticSwitchParameter Param;
-				Param.ParameterName = FName("UseNormal");
-				Param.Value = false;
-				Param.bOverride = true;
-				StaticParams.StaticSwitchParameters.Add(Param);
-			}
-			// StaticSwitchの適用 
-			if(0 < StaticParams.StaticSwitchParameters.Num())
-			{
-				NewMIC->UpdateStaticPermutation(StaticParams);
-			}
-
-			// メッシュに新MICをセット 
-			TargetMesh->Materials[MatIdx] = NewMIC;
+			// メッシュアセットに要保存マーク 
+			TargetStaticMesh->MarkPackageDirty();
 		}
 
-		// メッシュアセットに要保存マーク 
-		TargetMesh->MarkPackageDirty();
+		// SkeletalMesh 
+		USkeletalMesh* TargetSkeletalMesh = Cast<USkeletalMesh>(MeshAssetData.GetAsset());
+		if(nullptr != TargetSkeletalMesh)
+		{
+			// メッシュの各マテリアルについて 
+			int32 MatIdx = 0;
+			for(auto ItMat = TargetSkeletalMesh->Materials.CreateConstIterator(); ItMat; ++ItMat, ++MatIdx)
+			{
+				UMaterialInterface* NewMIC = CreateMIC(
+					BaseMat,
+					BaseMatSimpleName,
+					TargetSkeletalMesh->Materials[MatIdx].MaterialInterface,
+					TargetPathName
+					);
+				if (nullptr == NewMIC)
+				{
+					continue;
+				}
+				ObjectsToSync.Add(NewMIC);
+
+				// メッシュに新MICをセット 
+				TargetSkeletalMesh->Materials[MatIdx].MaterialInterface = NewMIC;
+			}
+
+			// メッシュアセットに要保存マーク 
+			TargetSkeletalMesh->MarkPackageDirty();
+		}
 	}
 
 	if(0 < ObjectsToSync.Num())
@@ -299,6 +252,114 @@ void FMICRepModule::ReplaceMaterials(TArray<FAssetData> SelectedAssets)
 	}
 }
 
+UMaterialInterface* FMICRepModule::CreateMIC(
+	UMaterialInterface* BaseMaterial,
+	FString BaseMaterialSimpleName,
+	UMaterialInterface* OldMaterial,
+	FString TargetPathName
+	)
+{
+	if((nullptr == BaseMaterial) || (nullptr == OldMaterial))
+	{
+		return nullptr;
+	}
+
+	FAssetToolsModule& AssetToolsModule =
+		FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools");
+
+	// 元マテリアル情報 
+	UTexture* ColorTex = nullptr;
+	{
+		TArray<UTexture*> Textures;
+		TArray<FName> TextureNames;
+		OldMaterial->GetTexturesInPropertyChain(
+			EMaterialProperty::MP_BaseColor,
+			Textures,
+			&TextureNames,
+			nullptr
+			);
+		if (0 < Textures.Num())
+		{
+			ColorTex = Textures[0];
+		}
+	}
+	UTexture* NormalTex = nullptr;
+	{
+		TArray<UTexture*> Textures;
+		TArray<FName> TextureNames;
+		OldMaterial->GetTexturesInPropertyChain(
+			EMaterialProperty::MP_Normal,
+			Textures,
+			&TextureNames,
+			nullptr
+			);
+		if (0 < Textures.Num())
+		{
+			NormalTex = Textures[0];
+		}
+	}
+
+	// 新MIC名 
+	FString NewMICName = FString::Printf(
+		TEXT("MI_%s_%s"),
+		*BaseMaterialSimpleName,
+		*(OldMaterial->GetName().Replace(TEXT("M_"), TEXT(""), ESearchCase::CaseSensitive))
+		);
+
+	// 新MIC作成 
+	UMaterialInstanceConstant* NewMIC = nullptr;
+	{
+		UMaterialInstanceConstantFactoryNew* Factory =
+			NewObject<UMaterialInstanceConstantFactoryNew>();
+		Factory->InitialParent = BaseMaterial;
+
+		UObject* NewAsset = AssetToolsModule.Get().CreateAsset(
+			NewMICName,
+			TargetPathName,
+			UMaterialInstanceConstant::StaticClass(),
+			Factory
+			);
+
+		NewMIC = Cast<UMaterialInstanceConstant>(NewAsset);
+	}
+	if(nullptr == NewMIC)
+	{
+		return nullptr;
+	}
+
+	// 新MICへテクスチャ設定 
+	FStaticParameterSet StaticParams;
+	if (nullptr != ColorTex)
+	{
+		NewMIC->SetTextureParameterValueEditorOnly(
+			FName(TEXT("BaseColor")),
+			ColorTex
+			);
+	}
+	if (nullptr != NormalTex)
+	{
+		NewMIC->SetTextureParameterValueEditorOnly(
+			FName(TEXT("Normal")),
+			NormalTex
+			);
+	}
+	else
+	{
+		// NoramlMap不要な場合はStaticSwitchでオフにする 
+		FStaticSwitchParameter Param;
+		Param.ParameterName = FName("UseNormal");
+		Param.Value = false;
+		Param.bOverride = true;
+		StaticParams.StaticSwitchParameters.Add(Param);
+	}
+	// StaticSwitchの適用 
+	if (0 < StaticParams.StaticSwitchParameters.Num())
+	{
+		NewMIC->UpdateStaticPermutation(StaticParams);
+	}
+
+	return NewMIC;
+}
 
 //
 // マテリアルの一括Reparent. 
