@@ -20,6 +20,7 @@ private:
 	static TSharedRef<FExtender> OnExtendContentBrowserAssetSelectionMenu(const TArray<FAssetData>& SelectedAssets);
 	static void CreateAssetMenu(FMenuBuilder& MenuBuilder, TArray<FAssetData> SelectedAssets);
 	static void CreateReparentSubMenu(FMenuBuilder& MenuBuilder, TArray<FAssetData> SelectedAssets);
+	static void CreateReparentSubSubMenu(FMenuBuilder& MenuBuilder, TArray<FAssetData> SelectedAssets);
 
 	static void ReplaceMaterials(TArray<FAssetData> SelectedAssets);
 	static UMaterialInterface* CreateMIC(UMaterialInterface* BaseMaterial, FString BaseMaterialSimpleName, UMaterialInterface* OldMaterial, FString TargetPathName);
@@ -126,6 +127,14 @@ void FMICRepModule::CreateAssetMenu(FMenuBuilder& MenuBuilder, TArray<FAssetData
 	}
 }
 void FMICRepModule::CreateReparentSubMenu(FMenuBuilder& MenuBuilder, TArray<FAssetData> SelectedAssets)
+{
+	MenuBuilder.AddSubMenu(
+		LOCTEXT("ReparentMaterialInstance", "Reparent MaterialInstance"),
+		LOCTEXT("ReparentMaterialInstance_Tooltip", "Reparent MaterialInstance"),
+		FNewMenuDelegate::CreateStatic(&FMICRepModule::CreateReparentSubSubMenu, SelectedAssets)
+		);
+}
+void FMICRepModule::CreateReparentSubSubMenu(FMenuBuilder& MenuBuilder, TArray<FAssetData> SelectedAssets)
 {
 	FContentBrowserModule& ContentBrowserModule =
 		FModuleManager::LoadModuleChecked<FContentBrowserModule>(TEXT("ContentBrowser"));
