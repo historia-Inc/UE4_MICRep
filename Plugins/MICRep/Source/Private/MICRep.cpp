@@ -4,8 +4,11 @@
 #include "LevelEditor.h"
 #include "AssetRegistryModule.h"
 #include "ContentBrowserModule.h"
+#include "IContentBrowserSingleton.h"
 #include "AssetToolsModule.h"
+#include "IAssetTools.h"
 #include "SAssetSearchBox.h"
+#include "Factories/MaterialInstanceConstantFactoryNew.h"
 
 
 #define LOCTEXT_NAMESPACE "MICRep"

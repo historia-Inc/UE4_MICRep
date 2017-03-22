@@ -1,7 +1,7 @@
 {
-	"Changelist" : 3249277,
-	"CompatibleChangelist" : 3195953,
-	"BuildId" : "2eb2df3e-8329-4e03-a0b7-aad6c1578bec",
+	"Changelist" : 3348071,
+	"CompatibleChangelist" : 3299760,
+	"BuildId" : "061ee2a1-1708-49db-bd34-6faec8f81f95",
 	"Modules" : 
 	{
 		"MICRep" : "UE4Editor-MICRep.dll"
