@@ -204,12 +204,14 @@ void FMICRepModule::ReplaceMaterials(TArray<FAssetData> SelectedAssets)
 		{
 			// メッシュの各マテリアルについて 
 			int32 MatIdx = 0;
-			for(auto ItMat = TargetStaticMesh->Materials.CreateConstIterator(); ItMat; ++ItMat, ++MatIdx)
+			for(auto ItMat = TargetStaticMesh->StaticMaterials.CreateConstIterator(); ItMat; ++ItMat, ++MatIdx)
 			{
+				FStaticMaterial StaMat = TargetStaticMesh->StaticMaterials[MatIdx];
+
 				UMaterialInterface* NewMIC = CreateMIC(
 					BaseMat,
 					BaseMatSimpleName,
-					TargetStaticMesh->Materials[MatIdx],
+					StaMat.MaterialInterface,
 					TargetPathName
 					);
 				if(nullptr == NewMIC)
@@ -219,7 +221,8 @@ void FMICRepModule::ReplaceMaterials(TArray<FAssetData> SelectedAssets)
 				ObjectsToSync.Add(NewMIC);
 
 				// メッシュに新MICをセット 
-				TargetStaticMesh->Materials[MatIdx] = NewMIC;
+				StaMat.MaterialInterface = NewMIC;
+				TargetStaticMesh->StaticMaterials[MatIdx] = StaMat;
 			}
 
 			// メッシュアセットに要保存マーク 

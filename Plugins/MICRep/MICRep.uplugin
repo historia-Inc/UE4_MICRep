@@ -3,10 +3,10 @@
 	
 	"FriendlyName" : "MIC Rep",
 	"Version" : 1,
-	"VersionName" : "1.2.2",
+	"VersionName" : "1.2.3",
 	"CreatedBy" : "historia Inc.",
 	"CreatedByURL" : "http://historia.co.jp/",
-	"EngineVersion" : "4.13.2",
+	"EngineVersion" : "4.14.3",
 	"Description" : "",
 	"Category" : "Editor",
 	
